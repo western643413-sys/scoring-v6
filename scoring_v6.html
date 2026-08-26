@@ -210,7 +210,10 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
   <!-- ══════════ 목록 ══════════ -->
   <section class="panel on" id="p-list">
     <div class="stat" id="stats"></div>
-    <input id="q" placeholder="티커 검색" style="margin-bottom:9px">
+    <div style="display:flex;gap:8px;margin-bottom:9px">
+      <input id="q" placeholder="티커 검색" style="flex:1;margin-bottom:0">
+      <button class="btn" id="refresh" style="width:auto;padding:0 16px;flex:none">↻</button>
+    </div>
     <div class="chips" id="filters"></div>
     <div id="list"></div>
   </section>
@@ -531,15 +534,31 @@ function cardHTML(r,trade){
     '</div></div>';
 }
 
-/* ══════════ 저장소 ══════════ */
-const KEY="sonbaba_v6_records";
-let mem=null;
-function storeOK(){ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); return true; }catch(e){ return false; } }
-const HAS=storeOK();
-if(!HAS){ mem=[]; document.getElementById("storewarn").innerHTML=
-  '<div class="warnbar">이 화면에서는 기록이 저장되지 않습니다. 파일을 내려받아 브라우저에서 직접 열어주세요.</div>'; }
-function load(){ if(!HAS) return mem; try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch(e){ return []; } }
-function save(a){ if(!HAS){ mem=a; return; } localStorage.setItem(KEY,JSON.stringify(a)); }
+/* ══════════ 저장소 — Google Sheets 백엔드(Apps Script) ══════════ */
+const API_URL="https://script.google.com/macros/s/AKfycbxLfE7z2GKlr0qxT6lBqLCoISkCIGUe1U2bxaEwIcIEJABV9pjaQLyzx3jn18dh9Flqkg/exec";
+let CACHE=[];
+function load(){ return CACHE; }
+
+async function apiGet(){
+  const res=await fetch(API_URL,{method:"GET"});
+  if(!res.ok) throw new Error("서버 응답 오류 ("+res.status+")");
+  return await res.json();
+}
+async function apiPost(params){
+  const res=await fetch(API_URL,{method:"POST",body:new URLSearchParams(params)});
+  if(!res.ok) throw new Error("서버 응답 오류 ("+res.status+")");
+  const j=await res.json();
+  if(!j||!j.ok) throw new Error("저장 실패");
+  return j;
+}
+async function refreshCache(){ CACHE=await apiGet(); return CACHE; }
+async function saveRecord(r){ await apiPost({action:"save",record:JSON.stringify(r)}); await refreshCache(); }
+async function deleteRecord(id){ await apiPost({action:"delete",id}); await refreshCache(); }
+
+function showSync(msg,cls){
+  const el=document.getElementById("storewarn");
+  el.innerHTML = msg ? '<div class="'+(cls||"warnbar")+'">'+esc(msg)+'</div>' : "";
+}
 
 /* ══════════ 폼 ══════════ */
 const $=id=>document.getElementById(id);
@@ -660,18 +679,22 @@ $("fill").onclick=()=>{
   }catch(e){ m.innerHTML='<div class="err">읽을 수 없습니다 — '+esc(e.message)+'</div>'; }
 };
 
-$("save").onclick=()=>{
-  const m=$("savemsg"), d=collect();
+$("save").onclick=async()=>{
+  const btn=$("save"), m=$("savemsg"), d=collect();
   if(!d.ticker){ m.innerHTML='<div class="err">티커를 입력해야 저장됩니다.</div>'; return; }
   let r; try{ r=score(d); }catch(e){ m.innerHTML='<div class="err">'+esc(e.message)+'</div>'; return; }
-  const db=load();
-  db.push({id:String(Date.now())+Math.random().toString(36).slice(2,6),
+  const rec={id:String(Date.now())+Math.random().toString(36).slice(2,6),
     date:new Date().toISOString().slice(0,10),ticker:d.ticker,name:d.name||d.ticker,
     pct:+r.pct.toFixed(1),raw:r.raw,final:r.final,data:d,
-    trade:{status:"관망중",buy:null,sell:null,memo:""}});
-  save(db); renderList();
-  m.innerHTML='<div class="ok">'+esc(d.ticker)+' 저장했습니다. 목록 탭에서 확인하세요.</div>';
-  setTimeout(()=>m.innerHTML="",4000);
+    trade:{status:"관망중",buy:null,sell:null,memo:""}};
+  btn.disabled=true; m.innerHTML='<div class="ok">저장 중…</div>';
+  try{
+    await saveRecord(rec); renderList();
+    m.innerHTML='<div class="ok">'+esc(d.ticker)+' 저장했습니다. 목록 탭에서 확인하세요.</div>';
+    setTimeout(()=>m.innerHTML="",4000);
+  }catch(e){
+    m.innerHTML='<div class="err">저장 실패 — '+esc(e.message)+'. 인터넷 연결을 확인하고 다시 시도해 주세요.</div>';
+  }finally{ btn.disabled=false; }
 };
 
 /* ══════════ 목록 ══════════ */
@@ -730,20 +753,31 @@ function renderList(){
         cur=b.dataset.s;
         it.querySelectorAll(".tstat .chip").forEach(x=>x.classList.toggle("on",x.dataset.s===cur));
       });
-      it.querySelector(".tsave").onclick=()=>{
-        const db2=load(), row=db2.find(x=>x.id===id);
+      it.querySelector(".tsave").onclick=async(ev)=>{
+        const btn=ev.target;
+        const row=load().find(x=>x.id===id); if(!row) return;
         row.trade={status:cur,buy:+it.querySelector(".tb").value||null,
           sell:+it.querySelector(".ts").value||null,memo:it.querySelector(".tm").value};
-        save(db2); renderList();
+        btn.disabled=true; btn.textContent="저장 중…";
+        try{ await saveRecord(row); renderList(); }
+        catch(e){ alert("저장 실패 — "+e.message); btn.disabled=false; btn.textContent="매매 기록 저장"; }
       };
-      it.querySelector(".tdel").onclick=()=>{
+      it.querySelector(".tdel").onclick=async(ev)=>{
         if(!confirm("이 기록을 지웁니다. 되돌릴 수 없습니다.")) return;
-        save(load().filter(x=>x.id!==id)); renderList();
+        const btn=ev.target; btn.disabled=true; btn.textContent="삭제 중…";
+        try{ await deleteRecord(id); renderList(); }
+        catch(e){ alert("삭제 실패 — "+e.message); btn.disabled=false; btn.textContent="이 기록 삭제"; }
       };
     };
   });
 }
 $("q").oninput=renderList;
+$("refresh").onclick=async()=>{
+  const btn=$("refresh"); btn.disabled=true; btn.textContent="…";
+  try{ await refreshCache(); renderList(); }
+  catch(e){ alert("새로고침 실패 — "+e.message); }
+  finally{ btn.disabled=false; btn.textContent="↻"; }
+};
 
 /* ══════════ 백업 ══════════ */
 let IMPMODE="merge";
@@ -767,22 +801,54 @@ $("impfile").onchange=e=>{
   rd.onload=()=>{ $("imptext").value=rd.result; };
   rd.readAsText(f);
 };
-$("imp").onclick=()=>{
-  const m=$("impmsg");
+$("imp").onclick=async()=>{
+  const m=$("impmsg"), btn=$("imp");
+  let inc;
   try{
-    const inc=JSON.parse($("imptext").value);
+    inc=JSON.parse($("imptext").value);
     if(!Array.isArray(inc)) throw new Error("기록 목록 형식이 아닙니다");
-    let db = IMPMODE==="replace" ? [] : load();
-    const seen=new Set(db.map(r=>r.id));
+  }catch(e){ m.innerHTML='<div class="err">읽을 수 없습니다 — '+esc(e.message)+'</div>'; return; }
+
+  btn.disabled=true;
+  try{
+    if(IMPMODE==="replace"){
+      const cur=load();
+      for(let i=0;i<cur.length;i++){
+        m.innerHTML='<div class="ok">기존 기록 지우는 중… ('+(i+1)+'/'+cur.length+')</div>';
+        await apiPost({action:"delete",id:cur[i].id});
+      }
+    }
+    const seen=new Set(IMPMODE==="replace" ? [] : load().map(r=>r.id));
     let n=0;
-    inc.forEach(r=>{ if(r&&r.id&&!seen.has(r.id)){ db.push(r); seen.add(r.id); n++; } });
-    save(db); renderList();
-    m.innerHTML='<div class="ok">'+n+'건 불러왔습니다. 전체 '+db.length+'건.</div>';
-  }catch(e){ m.innerHTML='<div class="err">읽을 수 없습니다 — '+esc(e.message)+'</div>'; }
+    for(let i=0;i<inc.length;i++){
+      const r=inc[i];
+      if(r&&r.id&&!seen.has(r.id)){
+        m.innerHTML='<div class="ok">불러오는 중… ('+(i+1)+'/'+inc.length+')</div>';
+        await apiPost({action:"save",record:JSON.stringify(r)});
+        seen.add(r.id); n++;
+      }
+    }
+    await refreshCache(); renderList();
+    m.innerHTML='<div class="ok">'+n+'건 불러왔습니다. 전체 '+load().length+'건.</div>';
+  }catch(e){
+    m.innerHTML='<div class="err">중간에 실패했습니다 — '+esc(e.message)+'. 인터넷 연결을 확인하고 다시 시도해 주세요.</div>';
+  }finally{ btn.disabled=false; }
 };
-$("wipe").onclick=()=>{
+$("wipe").onclick=async()=>{
   if(!confirm("모든 기록을 지웁니다. 되돌릴 수 없습니다.")) return;
-  save([]); renderList(); $("impmsg").innerHTML='<div class="ok">전부 지웠습니다.</div>';
+  const btn=$("wipe"), m=$("impmsg");
+  btn.disabled=true;
+  try{
+    const cur=load();
+    for(let i=0;i<cur.length;i++){
+      m.innerHTML='<div class="ok">지우는 중… ('+(i+1)+'/'+cur.length+')</div>';
+      await apiPost({action:"delete",id:cur[i].id});
+    }
+    await refreshCache(); renderList();
+    m.innerHTML='<div class="ok">전부 지웠습니다.</div>';
+  }catch(e){
+    m.innerHTML='<div class="err">중간에 실패했습니다 — '+esc(e.message)+'.</div>';
+  }finally{ btn.disabled=false; }
 };
 
 /* ══════════ 탭 ══════════ */
@@ -792,5 +858,11 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   window.scrollTo(0,0);
 });
 
-build(); draw(); renderList();
+build(); draw();
+(async function init(){
+  showSync("불러오는 중…","warnbar");
+  try{ await refreshCache(); showSync(""); }
+  catch(e){ showSync("서버 연결에 실패했습니다 — "+e.message+". 새로고침해서 다시 시도해 주세요.","err"); }
+  renderList();
+})();
 </script>
