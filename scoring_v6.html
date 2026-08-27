@@ -171,6 +171,21 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
 .tail .src{color:var(--dim);font-size:11.5px}
 
 /* 목록 */
+.daygroup{margin-bottom:14px}
+.dayhead{
+  display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;
+  padding:9px 3px;border-bottom:1px solid var(--line);margin-bottom:9px;
+}
+.dayhead .dcnt{
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:2px 10px;font-size:11px;font-family:var(--mono);color:var(--gold);flex:none}
+.dayhead .dtxt{font-size:13px;font-weight:700;color:var(--muted)}
+.dayhead .dchev{margin-left:auto;color:var(--dim);font-size:11px;transition:transform .15s}
+.daygroup.open .dayhead .dchev{transform:rotate(180deg)}
+.daygroup.open .dayhead{color:var(--text)}
+.dayitems{display:none}
+.daygroup.open .dayitems{display:block}
+
 .item{
   background:var(--surface);border:1px solid var(--line);border-radius:11px;
   margin-bottom:9px;overflow:hidden}
@@ -698,6 +713,12 @@ $("save").onclick=async()=>{
 };
 
 /* ══════════ 목록 ══════════ */
+function dayLabel(ds){
+  const d=new Date(ds+"T00:00:00");
+  const w=["일","월","화","수","목","금","토"][d.getDay()];
+  const p=ds.split("-");
+  return parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일 ("+w+")";
+}
 let FILTER=new Set(LADDER);
 function renderList(){
   const db=load();
@@ -719,15 +740,32 @@ function renderList(){
   if(!rows.length){ $("list").innerHTML='<div class="empty">'+
     (db.length?"조건에 맞는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
 
-  $("list").innerHTML=rows.map(r=>{
-    const ts=(r.trade&&r.trade.status)||"관망중";
-    return '<div class="item" data-id="'+r.id+'">'+
-      '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
-      '<span class="d">'+r.date.slice(5)+'</span><span class="t">'+esc(r.ticker)+'</span>'+
-      '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span>'+
-      '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
-      '<div class="body"></div></div>';
+  const groups=[];
+  rows.forEach(r=>{
+    let g=groups[groups.length-1];
+    if(!g||g.date!==r.date){ g={date:r.date,items:[]}; groups.push(g); }
+    g.items.push(r);
+  });
+
+  $("list").innerHTML=groups.map((g,gi)=>{
+    const items=g.items.map(r=>{
+      const ts=(r.trade&&r.trade.status)||"관망중";
+      return '<div class="item" data-id="'+r.id+'">'+
+        '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
+        '<span class="t">'+esc(r.ticker)+'</span>'+
+        '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span>'+
+        '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
+        '<div class="body"></div></div>';
+    }).join("");
+    return '<div class="daygroup'+(gi===0?" open":"")+'" data-date="'+g.date+'">'+
+      '<div class="dayhead"><span class="dcnt">'+g.items.length+'건</span>'+
+      '<span class="dtxt">'+dayLabel(g.date)+'</span><span class="dchev">▾</span></div>'+
+      '<div class="dayitems">'+items+'</div></div>';
   }).join("");
+
+  document.querySelectorAll(".dayhead").forEach(h=>{
+    h.onclick=()=>h.parentElement.classList.toggle("open");
+  });
 
   document.querySelectorAll(".item .head").forEach(h=>{
     h.onclick=()=>{
