@@ -201,9 +201,15 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
 .folder .flead b{font-family:var(--mono);color:var(--vc);font-weight:800}
 .folder .fmore{font-size:11px;color:var(--dim);margin-top:2px}
 .backbtn{
-  display:block;width:100%;text-align:left;background:none;border:0;
-  color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:700;
-  padding:2px 2px 12px;cursor:pointer}
+  display:flex;align-items:center;gap:9px;width:100%;
+  background:var(--surface);border:1px solid var(--line);border-radius:11px;
+  color:var(--text);font-family:var(--sans);font-size:13.5px;
+  padding:11px 13px;margin-bottom:11px;cursor:pointer;text-align:left}
+.backbtn:active{transform:translateY(1px)}
+.backbtn .bkarrow{font-size:19px;line-height:1;color:var(--gold);flex:none}
+.backbtn .bktxt{font-weight:800}
+.backbtn .bkcnt{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.backbtn .bkhint{margin-left:auto;font-size:11px;color:var(--dim);flex:none}
 
 .item{
   background:var(--surface);border:1px solid var(--line);border-radius:11px;
@@ -747,7 +753,18 @@ function dayLabel(ds){
   const p=ds.split("-");
   return parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일 ("+w+")";
 }
-let VIEW=null, DAY=null;
+let VIEW=null, DAY=null, NAV=false;
+function pushNav(){
+  if(NAV) return;
+  try{ history.pushState({view:VIEW,day:DAY},"",location.pathname+location.search); }catch(e){}
+}
+window.addEventListener("popstate",e=>{
+  const s=e.state||{};
+  NAV=true;
+  VIEW=s.view||null; DAY=s.day||null;
+  renderList();
+  NAV=false;
+});
 function shortBand(b){
   if(!b) return "";
   const hit=String(b).match(/(\d+)일선/g);
@@ -781,7 +798,7 @@ function renderList(){
     '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
     '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("");
   document.querySelectorAll(".vtile").forEach(b=>{
-    b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; renderList(); };
+    b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; pushNav(); renderList(); };
   });
 
   const buys=db.filter(r=>r.trade&&r.trade.status==="매수").length;
@@ -814,7 +831,7 @@ function renderList(){
           '</button>';
       }).join("")+'</div>';
     document.querySelectorAll(".folder").forEach(b=>{
-      b.onclick=()=>{ DAY=b.dataset.d; renderList(); };
+      b.onclick=()=>{ DAY=b.dataset.d; pushNav(); renderList(); };
     });
     return;
   }
@@ -822,8 +839,10 @@ function renderList(){
   /* ── 3단계: 그 날짜의 종목 목록 ── */
   const top=bestOfDay(db);
   const dp=dayParts(DAY);
-  $("list").innerHTML='<button class="backbtn" id="back">‹　'+dp.md+' ('+dp.w.charAt(0)+')　·　'+
-    days[DAY].length+'건</button>'+
+  $("list").innerHTML='<button class="backbtn" id="back">'+
+    '<span class="bkarrow">‹</span><span class="bktxt">'+dp.md+' ('+dp.w.charAt(0)+')</span>'+
+    '<span class="bkcnt">'+days[DAY].length+'건</span>'+
+    '<span class="bkhint">폴더로</span></button>'+
     days[DAY].map(r=>{
       const ts=(r.trade&&r.trade.status)||"관망중";
       const px=r.data&&r.data.price
@@ -840,7 +859,7 @@ function renderList(){
         '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
         '<div class="body"></div></div>';
     }).join("");
-  $("back").onclick=()=>{ DAY=null; renderList(); };
+  $("back").onclick=()=>{ history.back(); };
 
   document.querySelectorAll(".item .head").forEach(h=>{
     h.onclick=()=>{
@@ -977,5 +996,6 @@ build(); draw();
   try{ await refreshCache(); showSync(""); }
   catch(e){ showSync("서버 연결에 실패했습니다 — "+e.message+". 새로고침해서 다시 시도해 주세요.","err"); }
   renderList();
+  try{ history.replaceState({view:VIEW,day:null},"",location.pathname+location.search); }catch(e){}
 })();
 </script>
