@@ -185,6 +185,26 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
   font-size:11.5px;line-height:1.65;color:var(--muted);margin-bottom:8px}
 .subline{font-size:11.5px;color:var(--dim);padding:2px 3px 0}
 
+.folders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.folder{
+  cursor:pointer;text-align:left;padding:13px 13px 14px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);font-family:var(--sans);
+  display:block;width:100%}
+.folder:active{transform:translateY(1px)}
+.folder .fh{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.folder .fic{font-size:15px;line-height:1}
+.folder .fcnt{font-family:var(--mono);font-size:11px;color:var(--vc)}
+.folder .fmd{font-size:14.5px;font-weight:800;color:var(--text)}
+.folder .fw{font-size:11px;color:var(--dim);margin-top:1px}
+.folder .flead{font-size:12px;color:var(--muted);margin-top:7px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder .flead b{font-family:var(--mono);color:var(--vc);font-weight:800}
+.folder .fmore{font-size:11px;color:var(--dim);margin-top:2px}
+.backbtn{
+  display:block;width:100%;text-align:left;background:none;border:0;
+  color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:700;
+  padding:2px 2px 12px;cursor:pointer}
+
 .item{
   background:var(--surface);border:1px solid var(--line);border-radius:11px;
   margin-bottom:9px;overflow:hidden}
@@ -727,11 +747,11 @@ function dayLabel(ds){
   const p=ds.split("-");
   return parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일 ("+w+")";
 }
-let VIEW=null;
+let VIEW=null, DAY=null;
 function shortBand(b){
   if(!b) return "";
   const hit=String(b).match(/(\d+)일선/g);
-  if(!hit||!hit.length) return String(b).slice(0,14);
+  if(!hit||!hit.length) return "";
   const uniq=[...new Set(hit.map(x=>x.replace("일선","")))];
   return uniq.join("·")+"일선 이탈";
 }
@@ -739,6 +759,12 @@ function bestOfDay(db){
   const top={};
   db.forEach(r=>{ if(top[r.date]===undefined||r.pct>top[r.date]) top[r.date]=r.pct; });
   return top;
+}
+function dayParts(ds){
+  const d=new Date(ds+"T00:00:00");
+  const w=["일","월","화","수","목","금","토"][d.getDay()];
+  const p=ds.split("-");
+  return {md:parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일", w:w+"요일"};
 }
 function renderList(){
   const db=load();
@@ -748,14 +774,14 @@ function renderList(){
   pool.forEach(r=>{ if(byV[r.final]) byV[r.final].push(r); });
 
   if(VIEW===null||!byV[VIEW]||!byV[VIEW].length){
-    VIEW=LADDER.find(v=>byV[v].length)||LADDER[0];
+    VIEW=LADDER.find(v=>byV[v].length)||LADDER[0]; DAY=null;
   }
 
   $("stats").innerHTML=LADDER.map(v=>
     '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
     '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("");
   document.querySelectorAll(".vtile").forEach(b=>{
-    b.onclick=()=>{ VIEW=b.dataset.v; renderList(); };
+    b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; renderList(); };
   });
 
   const buys=db.filter(r=>r.trade&&r.trade.status==="매수").length;
@@ -771,24 +797,50 @@ function renderList(){
   if(!rows.length){ $("list").innerHTML='<div class="empty">'+
     (db.length?"이 판정에 해당하는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
 
+  const days={};
+  rows.forEach(r=>{ (days[r.date]=days[r.date]||[]).push(r); });
+  if(DAY!==null&&!days[DAY]) DAY=null;
+
+  /* ── 2단계: 날짜 폴더 격자 ── */
+  if(DAY===null){
+    $("list").innerHTML='<div class="folders">'+
+      Object.keys(days).sort().reverse().map(d=>{
+        const it=days[d], p=dayParts(d), lead=it[0];
+        return '<button class="folder" data-d="'+d+'" style="--vc:'+VC[VIEW]+'">'+
+          '<div class="fh"><span class="fic">📁</span><span class="fcnt">'+it.length+'건</span></div>'+
+          '<div class="fmd">'+p.md+'</div><div class="fw">'+p.w+'</div>'+
+          '<div class="flead">'+esc(lead.ticker)+' <b>'+lead.pct.toFixed(1)+'%</b></div>'+
+          (it.length>1?'<div class="fmore">외 '+(it.length-1)+'종목</div>':"")+
+          '</button>';
+      }).join("")+'</div>';
+    document.querySelectorAll(".folder").forEach(b=>{
+      b.onclick=()=>{ DAY=b.dataset.d; renderList(); };
+    });
+    return;
+  }
+
+  /* ── 3단계: 그 날짜의 종목 목록 ── */
   const top=bestOfDay(db);
-  $("list").innerHTML=rows.map(r=>{
-    const ts=(r.trade&&r.trade.status)||"관망중";
-    const px=r.data&&r.data.price
-      ? "$"+Number(r.data.price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
-      : "—";
-    const star=(top[r.date]!==undefined&&r.pct===top[r.date])
-      ? '<span class="best" title="그날 최고점">★</span>' : "";
-    const band=shortBand(r.data&&r.data.band);
-    return '<div class="item" data-id="'+r.id+'">'+
-      '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
-      '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
-        '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span></div>'+
-        '<div class="l2">'+r.date.slice(5).replace("-",".")+'　·　스코어링 금액 '+px+
-        (band?'　·　'+esc(band):"")+'</div></div>'+
-      '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
-      '<div class="body"></div></div>';
-  }).join("");
+  const dp=dayParts(DAY);
+  $("list").innerHTML='<button class="backbtn" id="back">‹　'+dp.md+' ('+dp.w.charAt(0)+')　·　'+
+    days[DAY].length+'건</button>'+
+    days[DAY].map(r=>{
+      const ts=(r.trade&&r.trade.status)||"관망중";
+      const px=r.data&&r.data.price
+        ? "$"+Number(r.data.price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
+        : "—";
+      const star=(top[r.date]!==undefined&&r.pct===top[r.date])
+        ? '<span class="best" title="그날 최고점">★</span>' : "";
+      const band=shortBand(r.data&&r.data.band);
+      return '<div class="item" data-id="'+r.id+'">'+
+        '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
+        '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
+          '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span></div>'+
+          '<div class="l2">스코어링 금액 '+px+(band?'　·　'+esc(band):"")+'</div></div>'+
+        '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
+        '<div class="body"></div></div>';
+    }).join("");
+  $("back").onclick=()=>{ DAY=null; renderList(); };
 
   document.querySelectorAll(".item .head").forEach(h=>{
     h.onclick=()=>{
