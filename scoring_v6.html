@@ -999,7 +999,7 @@ function renderList(){
           sell:+it.querySelector(".ts").value||null,
           buyDate:it.querySelector(".tbd").value,
           sellDate:it.querySelector(".tsd").value});
-        $("pnl"+k).innerHTML = p.html;
+        const pb=it.querySelector(".pnlbox"); if(pb) pb.innerHTML=p.html;
       };
       ["tb","ts","tbd","tsd"].forEach(c=>{
         it.querySelector("."+c).oninput=upPnl;
