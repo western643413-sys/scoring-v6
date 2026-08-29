@@ -171,30 +171,29 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
 .tail .src{color:var(--dim);font-size:11.5px}
 
 /* 목록 */
-.daygroup{margin-bottom:14px}
-.dayhead{
-  display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;
-  padding:9px 3px;border-bottom:1px solid var(--line);margin-bottom:9px;
-}
-.dayhead .dcnt{
-  background:var(--surface);border:1px solid var(--line);border-radius:999px;
-  padding:2px 10px;font-size:11px;font-family:var(--mono);color:var(--gold);flex:none}
-.dayhead .dtxt{font-size:13px;font-weight:700;color:var(--muted)}
-.dayhead .dchev{margin-left:auto;color:var(--dim);font-size:11px;transition:transform .15s}
-.daygroup.open .dayhead .dchev{transform:rotate(180deg)}
-.daygroup.open .dayhead{color:var(--text)}
-.dayitems{display:none}
-.daygroup.open .dayitems{display:block}
+.vtile{
+  background:var(--surface);border:1px solid var(--line);border-radius:11px;
+  padding:13px 4px;text-align:center;cursor:pointer;font-family:var(--sans);
+  display:flex;flex-direction:column;gap:3px;min-width:0}
+.vtile.on{background:var(--raised);border-color:var(--vc)}
+.vtile .n{font-family:var(--mono);font-size:20px;font-weight:800;color:var(--vc);line-height:1}
+.vtile .l{font-size:10.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.vtile.on .l{color:var(--text)}
+.subline{font-size:11.5px;color:var(--dim);padding:2px 3px 0}
 
 .item{
   background:var(--surface);border:1px solid var(--line);border-radius:11px;
   margin-bottom:9px;overflow:hidden}
 .item .head{
-  display:flex;align-items:center;gap:9px;padding:12px 13px;cursor:pointer}
-.item .d{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
-.item .t{font-weight:800;font-size:14.5px}
-.item .p{font-family:var(--mono);font-size:13px;color:var(--muted);margin-left:auto}
+  display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer}
 .item .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.item .idn{flex:1;min-width:0}
+.item .l1{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.item .t{font-weight:800;font-size:14.5px}
+.item .best{color:var(--gold);font-size:12px}
+.item .l2{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:2px}
+.item .p{font-family:var(--mono);font-size:14px;color:var(--muted);flex:none}
 .item .body{display:none;padding:0 13px 13px;border-top:1px solid var(--line)}
 .item.open .body{display:block}
 .item .body .card{background:var(--ink);margin:13px 0}
@@ -205,7 +204,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
   border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:11px}
 .ok{background:#10301E;border:1px solid #1D5636;color:#5FD99A;
   border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:11px}
-.stat{display:flex;gap:8px;margin-bottom:13px}
+.stat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:11px}
 .stat div{flex:1;background:var(--surface);border:1px solid var(--line);
   border-radius:10px;padding:11px;text-align:center}
 .stat .n{font-family:var(--mono);font-size:19px;font-weight:800;display:block}
@@ -229,7 +228,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
       <input id="q" placeholder="티커 검색" style="flex:1;margin-bottom:0">
       <button class="btn" id="refresh" style="width:auto;padding:0 16px;flex:none">↻</button>
     </div>
-    <div class="chips" id="filters"></div>
+    <div id="filters"></div>
     <div id="list"></div>
   </section>
 
@@ -719,53 +718,57 @@ function dayLabel(ds){
   const p=ds.split("-");
   return parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일 ("+w+")";
 }
-let FILTER=new Set(LADDER);
+let VIEW=null;
+function bestOfDay(db){
+  const top={};
+  db.forEach(r=>{ if(top[r.date]===undefined||r.pct>top[r.date]) top[r.date]=r.pct; });
+  return top;
+}
 function renderList(){
   const db=load();
-  const nav=document.querySelectorAll("nav button");
-  const st=$("stats");
+  const q=$("q").value.trim().toUpperCase();
+  const pool=db.filter(r=>!q||r.ticker.includes(q));
+  const byV={}; LADDER.forEach(v=>byV[v]=[]);
+  pool.forEach(r=>{ if(byV[r.final]) byV[r.final].push(r); });
+
+  if(VIEW===null||!byV[VIEW]||!byV[VIEW].length){
+    VIEW=LADDER.find(v=>byV[v].length)||LADDER[0];
+  }
+
+  $("stats").innerHTML=LADDER.map(v=>
+    '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
+    '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("");
+  document.querySelectorAll(".vtile").forEach(b=>{
+    b.onclick=()=>{ VIEW=b.dataset.v; renderList(); };
+  });
+
   const buys=db.filter(r=>r.trade&&r.trade.status==="매수").length;
   const sells=db.filter(r=>r.trade&&r.trade.status==="매도").length;
-  st.innerHTML='<div><span class="n">'+db.length+'</span><span class="l">전체 기록</span></div>'+
-    '<div><span class="n" style="color:var(--buy)">'+buys+'</span><span class="l">매수 보유</span></div>'+
-    '<div><span class="n" style="color:var(--gold)">'+sells+'</span><span class="l">매도 완료</span></div>';
+  $("filters").innerHTML='<div class="subline">전체 '+db.length+'건　·　매수 보유 '+buys+
+    '　·　매도 완료 '+sells+'</div>';
 
-  chips($("filters"),LADDER.map(v=>[v,v]),v=>FILTER.has(v),
-    v=>{ FILTER.has(v)?FILTER.delete(v):FILTER.add(v); renderList(); });
-
-  const q=$("q").value.trim().toUpperCase();
-  const rows=db.filter(r=>(!q||r.ticker.includes(q))&&FILTER.has(r.final))
+  const rows=byV[VIEW].slice()
    .sort((a,b)=> a.date===b.date ? b.pct-a.pct : (a.date<b.date?1:-1));
 
   if(!rows.length){ $("list").innerHTML='<div class="empty">'+
-    (db.length?"조건에 맞는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
+    (db.length?"이 판정에 해당하는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
 
-  const groups=[];
-  rows.forEach(r=>{
-    let g=groups[groups.length-1];
-    if(!g||g.date!==r.date){ g={date:r.date,items:[]}; groups.push(g); }
-    g.items.push(r);
-  });
-
-  $("list").innerHTML=groups.map((g,gi)=>{
-    const items=g.items.map(r=>{
-      const ts=(r.trade&&r.trade.status)||"관망중";
-      return '<div class="item" data-id="'+r.id+'">'+
-        '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
-        '<span class="t">'+esc(r.ticker)+'</span>'+
-        '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span>'+
-        '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
-        '<div class="body"></div></div>';
-    }).join("");
-    return '<div class="daygroup'+(gi===0?" open":"")+'" data-date="'+g.date+'">'+
-      '<div class="dayhead"><span class="dcnt">'+g.items.length+'건</span>'+
-      '<span class="dtxt">'+dayLabel(g.date)+'</span><span class="dchev">▾</span></div>'+
-      '<div class="dayitems">'+items+'</div></div>';
+  const top=bestOfDay(db);
+  $("list").innerHTML=rows.map(r=>{
+    const ts=(r.trade&&r.trade.status)||"관망중";
+    const px=r.data&&r.data.price
+      ? "$"+Number(r.data.price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
+      : "—";
+    const star=(top[r.date]!==undefined&&r.pct===top[r.date])
+      ? '<span class="best" title="그날 최고점">★</span>' : "";
+    return '<div class="item" data-id="'+r.id+'">'+
+      '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
+      '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
+        '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span></div>'+
+        '<div class="l2">'+r.date.slice(5).replace("-",".")+'　·　스코어링가 '+px+'</div></div>'+
+      '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
+      '<div class="body"></div></div>';
   }).join("");
-
-  document.querySelectorAll(".dayhead").forEach(h=>{
-    h.onclick=()=>h.parentElement.classList.toggle("open");
-  });
 
   document.querySelectorAll(".item .head").forEach(h=>{
     h.onclick=()=>{
