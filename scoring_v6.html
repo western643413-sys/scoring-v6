@@ -253,7 +253,16 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
   border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:11px}
 .ok{background:#10301E;border:1px solid #1D5636;color:#5FD99A;
   border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:11px}
-.stat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:11px}
+.stat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:11px}
+.pnl{border-radius:9px;padding:9px 12px;font-size:12.5px;margin:11px 0 4px;
+  font-family:var(--mono)}
+.pnl b{font-family:var(--sans);font-weight:800;margin-right:4px}
+.pnl.win{background:rgba(47,191,113,.10);color:var(--buy)}
+.pnl.lose{background:rgba(224,82,82,.10);color:var(--pass)}
+.pnl.hold{background:var(--raised);color:var(--muted)}
+.item .l2 .gain{color:var(--buy)}
+.item .l2 .loss{color:var(--pass)}
+.item .l2 .hold{color:var(--muted)}
 .stat div{flex:1;background:var(--surface);border:1px solid var(--line);
   border-radius:10px;padding:11px;text-align:center}
 .stat .n{font-family:var(--mono);font-size:19px;font-weight:800;display:block}
@@ -789,6 +798,34 @@ function monLabel(m){
   const p=m.split("-");
   return p[0]+"년 "+parseInt(p[1],10)+"월";
 }
+function pnlInfo(t){
+  t=t||{};
+  const buy=Number(t.buy)||null, sell=Number(t.sell)||null;
+  const out={done:false,win:null,rate:null,days:null,text:"",html:""};
+  if(t.buyDate&&t.sellDate){
+    const a=new Date(t.buyDate+"T00:00:00"), b=new Date(t.sellDate+"T00:00:00");
+    const d=Math.round((b-a)/86400000);
+    if(!isNaN(d)&&d>=0) out.days=d;
+  }
+  if(buy&&sell){
+    out.done=true;
+    out.rate=(sell/buy-1)*100;
+    const flat=Math.abs(out.rate)<0.05;
+    out.win=flat?null:out.rate>0;
+    const lbl=flat?"본전":(out.win?"익절":"손절");
+    const sign=out.rate>0?"+":"";
+    out.text="$"+buy.toFixed(2)+" → $"+sell.toFixed(2)+"　"+lbl+
+      (flat?"":" "+sign+out.rate.toFixed(1)+"%")+
+      (out.days!==null?"　·　"+out.days+"일 보유":"");
+    out.html='<div class="pnl '+(flat?"hold":(out.win?"win":"lose"))+'">'+
+      '<b>'+lbl+(flat?"":" "+sign+out.rate.toFixed(1)+"%")+'</b>　$'+buy.toFixed(2)+' → $'+sell.toFixed(2)+
+      (out.days!==null?'　·　'+out.days+'일 보유':"")+'</div>';
+  } else if(buy){
+    out.text="$"+buy.toFixed(2)+" 매수　·　매도 전";
+    out.html='<div class="pnl hold">$'+buy.toFixed(2)+' 매수 · 매도 전</div>';
+  }
+  return out;
+}
 function shortBand(b){
   if(!b) return "";
   const hit=String(b).match(/(\d+)일선/g);
@@ -814,29 +851,41 @@ function renderList(){
   const byV={}; LADDER.forEach(v=>byV[v]=[]);
   pool.forEach(r=>{ if(byV[r.final]) byV[r.final].push(r); });
 
-  if(VIEW===null||!byV[VIEW]||!byV[VIEW].length){
+  const holds=pool.filter(r=>r.trade&&r.trade.status==="매수");
+  const dones=pool.filter(r=>r.trade&&r.trade.status==="매도");
+  const TRADEVIEW={"__hold":holds,"__done":dones};
+
+  if(VIEW===null||(!byV[VIEW]&&!TRADEVIEW[VIEW])||
+     (byV[VIEW]&&!byV[VIEW].length)||(TRADEVIEW[VIEW]&&!TRADEVIEW[VIEW].length)){
     VIEW=LADDER.find(v=>byV[v].length)||LADDER[0]; DAY=null; MON=null; PICK=false;
   }
 
   $("stats").innerHTML=LADDER.map(v=>
     '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
-    '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("");
+    '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("")+
+    '<button class="vtile'+(VIEW==="__hold"?" on":"")+'" data-v="__hold" style="--vc:'+TC["매수"]+'">'+
+    '<span class="n">'+holds.length+'</span><span class="l">매수 보유</span></button>'+
+    '<button class="vtile'+(VIEW==="__done"?" on":"")+'" data-v="__done" style="--vc:'+TC["매도"]+'">'+
+    '<span class="n">'+dones.length+'</span><span class="l">매도 완료</span></button>';
   document.querySelectorAll(".vtile").forEach(b=>{
     b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; MON=null; PICK=false; pushNav(); renderList(); };
   });
 
-  const buys=db.filter(r=>r.trade&&r.trade.status==="매수").length;
-  const sells=db.filter(r=>r.trade&&r.trade.status==="매도").length;
-  $("filters").innerHTML=
-    '<div class="vdesc" style="border-left:3px solid '+VC[VIEW]+'">'+esc(VDESC[VIEW])+'</div>'+
-    '<div class="subline">전체 '+db.length+'건　·　매수 보유 '+buys+
-    '　·　매도 완료 '+sells+'</div>';
+  const isTrade=!!TRADEVIEW[VIEW];
+  const VCOL=isTrade?(VIEW==="__hold"?TC["매수"]:TC["매도"]):VC[VIEW];
+  const VNAME=isTrade?(VIEW==="__hold"?"매수 보유":"매도 완료"):VIEW;
+  const DESC=isTrade
+    ? (VIEW==="__hold"?"매수 후 보유 중인 종목":"매도까지 끝난 종목 · 익절/손절 결과")
+    : VDESC[VIEW];
 
-  const all=byV[VIEW].slice()
+  $("filters").innerHTML=
+    '<div class="vdesc" style="border-left:3px solid '+VCOL+'">'+esc(DESC)+'</div>';
+
+  const all=(isTrade?TRADEVIEW[VIEW]:byV[VIEW]).slice()
    .sort((a,b)=> a.date===b.date ? b.pct-a.pct : (a.date<b.date?1:-1));
 
   if(!all.length){ $("list").innerHTML='<div class="empty">'+
-    (db.length?"이 판정에 해당하는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
+    (db.length?"여기에 해당하는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
 
   const months={};
   all.forEach(r=>{ (months[r.date.slice(0,7)]=months[r.date.slice(0,7)]||[]).push(r); });
@@ -853,7 +902,7 @@ function renderList(){
       Object.keys(years).sort().reverse().map(y=>
         '<div class="yblock"><div class="yhead">'+y+'년</div><div class="folders">'+
         years[y].map(m=>
-          '<button class="monbtn'+(m===MON?" on":"")+'" data-m="'+m+'" style="--vc:'+VC[VIEW]+'">'+
+          '<button class="monbtn'+(m===MON?" on":"")+'" data-m="'+m+'" style="--vc:'+VCOL+'">'+
           '<div class="mname">'+parseInt(m.slice(5),10)+'월</div>'+
           '<div class="mcnt">'+months[m].length+'건</div></button>').join("")+
         '</div></div>').join("");
@@ -869,7 +918,7 @@ function renderList(){
   rows.forEach(r=>{ (days[r.date]=days[r.date]||[]).push(r); });
   if(DAY!==null&&!days[DAY]) DAY=null;
 
-  const monBar='<button class="monbar" id="monsel" style="--vc:'+VC[VIEW]+'">'+
+  const monBar='<button class="monbar" id="monsel" style="--vc:'+VCOL+'">'+
     '<span class="mtxt">'+monLabel(MON)+'</span>'+
     '<span class="mct">'+rows.length+'건</span>'+
     '<span class="mchev">기간 변경 ▾</span></button>';
@@ -879,7 +928,7 @@ function renderList(){
     $("list").innerHTML=monBar+'<div class="folders">'+
       Object.keys(days).sort().reverse().map(d=>{
         const it=days[d], p=dayParts(d), lead=it[0];
-        return '<button class="folder" data-d="'+d+'" style="--vc:'+VC[VIEW]+'">'+
+        return '<button class="folder" data-d="'+d+'" style="--vc:'+VCOL+'">'+
           '<div class="fh"><span class="fic">📁</span><span class="fcnt">'+it.length+'건</span></div>'+
           '<div class="fmd">'+p.md+'</div><div class="fw">'+p.w+'</div>'+
           '<div class="flead">'+esc(lead.ticker)+' <b>'+lead.pct.toFixed(1)+'%</b></div>'+
@@ -908,11 +957,15 @@ function renderList(){
       const star=(top[r.date]!==undefined&&r.pct===top[r.date])
         ? '<span class="best" title="그날 최고점">★</span>' : "";
       const band=shortBand(r.data&&r.data.band);
+      const p=pnlInfo(r.trade);
+      const line2 = p.text
+        ? '<span class="'+(p.done?(p.win?"gain":"loss"):"hold")+'">'+esc(p.text)+'</span>'
+        : '스코어링 금액 '+px+(band?'　·　'+esc(band):"");
       return '<div class="item" data-id="'+r.id+'">'+
         '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
         '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
           '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span></div>'+
-          '<div class="l2">스코어링 금액 '+px+(band?'　·　'+esc(band):"")+'</div></div>'+
+          '<div class="l2">'+line2+'</div></div>'+
         '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
         '<div class="body"></div></div>';
     }).join("");
@@ -931,11 +984,27 @@ function renderList(){
           TRADE.map(s=>'<button class="chip'+((t.status||"관망중")===s?" on":"")+'" data-s="'+s+'">'+s+'</button>').join("")+
         '</div><div class="row"><div><label>매수가 $</label>'+
         '<input class="tb" type="number" step="0.01" inputmode="decimal" value="'+(t.buy??"")+'"></div>'+
-        '<div><label>매도가 $</label><input class="ts" type="number" step="0.01" inputmode="decimal" value="'+(t.sell??"")+'"></div></div>'+
+        '<div><label>매수일</label><input class="tbd" type="date" value="'+(t.buyDate||"")+'"></div></div>'+
+        '<div class="row"><div><label>매도가 $</label>'+
+        '<input class="ts" type="number" step="0.01" inputmode="decimal" value="'+(t.sell??"")+'"></div>'+
+        '<div><label>매도일</label><input class="tsd" type="date" value="'+(t.sellDate||"")+'"></div></div>'+
+        '<div class="pnlbox" id="pnl'+k+'"></div>'+
         '<label>메모</label><input class="tm" value="'+esc(t.memo||"")+'">'+
         '<div style="height:11px"></div><button class="btn tsave">매매 기록 저장</button>'+
         '<div style="height:7px"></div><button class="btn danger tdel">이 기록 삭제</button>';
       it.classList.add("open");
+
+      const upPnl=()=>{
+        const p=pnlInfo({buy:+it.querySelector(".tb").value||null,
+          sell:+it.querySelector(".ts").value||null,
+          buyDate:it.querySelector(".tbd").value,
+          sellDate:it.querySelector(".tsd").value});
+        $("pnl"+k).innerHTML = p.html;
+      };
+      ["tb","ts","tbd","tsd"].forEach(c=>{
+        it.querySelector("."+c).oninput=upPnl;
+      });
+      upPnl();
 
       let cur=t.status||"관망중";
       it.querySelectorAll(".tstat .chip").forEach(b=>b.onclick=()=>{
@@ -946,7 +1015,10 @@ function renderList(){
         const btn=ev.target;
         const row=load().find(x=>x.id===id); if(!row) return;
         row.trade={status:cur,buy:+it.querySelector(".tb").value||null,
-          sell:+it.querySelector(".ts").value||null,memo:it.querySelector(".tm").value};
+          sell:+it.querySelector(".ts").value||null,
+          buyDate:it.querySelector(".tbd").value||null,
+          sellDate:it.querySelector(".tsd").value||null,
+          memo:it.querySelector(".tm").value};
         btn.disabled=true; btn.textContent="저장 중…";
         try{ await saveRecord(row); renderList(); }
         catch(e){ alert("저장 실패 — "+e.message); btn.disabled=false; btn.textContent="매매 기록 저장"; }
