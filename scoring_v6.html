@@ -185,6 +185,26 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
   font-size:11.5px;line-height:1.65;color:var(--muted);margin-bottom:8px}
 .subline{font-size:11.5px;color:var(--dim);padding:2px 3px 0}
 
+.monbar{
+  display:flex;align-items:center;gap:9px;width:100%;
+  background:var(--surface);border:1px solid var(--line);border-radius:11px;
+  padding:11px 13px;margin-bottom:11px;cursor:pointer;
+  font-family:var(--sans);text-align:left;color:var(--text)}
+.monbar:active{transform:translateY(1px)}
+.monbar .mtxt{font-size:14px;font-weight:800}
+.monbar .mct{font-family:var(--mono);font-size:11.5px;color:var(--vc)}
+.monbar .mchev{margin-left:auto;font-size:11px;color:var(--dim);flex:none}
+.yblock{margin-bottom:16px}
+.yhead{font-size:12px;font-weight:800;color:var(--muted);
+  padding:0 2px 8px;border-bottom:1px solid var(--line);margin-bottom:9px}
+.monbtn{
+  cursor:pointer;padding:13px 8px;border-radius:11px;text-align:center;
+  background:var(--surface);border:1px solid var(--line);font-family:var(--sans)}
+.monbtn.on{background:var(--raised);border-color:var(--vc)}
+.monbtn .mname{font-size:14.5px;font-weight:800;color:var(--text)}
+.monbtn .mcnt{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:2px}
+.monbtn.on .mcnt{color:var(--vc)}
+
 .folders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .folder{
   cursor:pointer;text-align:left;padding:13px 13px 14px;border-radius:12px;
@@ -753,18 +773,22 @@ function dayLabel(ds){
   const p=ds.split("-");
   return parseInt(p[1],10)+"월 "+parseInt(p[2],10)+"일 ("+w+")";
 }
-let VIEW=null, DAY=null, NAV=false;
+let VIEW=null, DAY=null, MON=null, PICK=false, NAV=false;
 function pushNav(){
   if(NAV) return;
-  try{ history.pushState({view:VIEW,day:DAY},"",location.pathname+location.search); }catch(e){}
+  try{ history.pushState({view:VIEW,day:DAY,mon:MON,pick:PICK},"",location.pathname+location.search); }catch(e){}
 }
 window.addEventListener("popstate",e=>{
   const s=e.state||{};
   NAV=true;
-  VIEW=s.view||null; DAY=s.day||null;
+  VIEW=s.view||null; DAY=s.day||null; MON=s.mon||null; PICK=!!s.pick;
   renderList();
   NAV=false;
 });
+function monLabel(m){
+  const p=m.split("-");
+  return p[0]+"년 "+parseInt(p[1],10)+"월";
+}
 function shortBand(b){
   if(!b) return "";
   const hit=String(b).match(/(\d+)일선/g);
@@ -791,14 +815,14 @@ function renderList(){
   pool.forEach(r=>{ if(byV[r.final]) byV[r.final].push(r); });
 
   if(VIEW===null||!byV[VIEW]||!byV[VIEW].length){
-    VIEW=LADDER.find(v=>byV[v].length)||LADDER[0]; DAY=null;
+    VIEW=LADDER.find(v=>byV[v].length)||LADDER[0]; DAY=null; MON=null; PICK=false;
   }
 
   $("stats").innerHTML=LADDER.map(v=>
     '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
     '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("");
   document.querySelectorAll(".vtile").forEach(b=>{
-    b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; pushNav(); renderList(); };
+    b.onclick=()=>{ VIEW=b.dataset.v; DAY=null; MON=null; PICK=false; pushNav(); renderList(); };
   });
 
   const buys=db.filter(r=>r.trade&&r.trade.status==="매수").length;
@@ -808,19 +832,51 @@ function renderList(){
     '<div class="subline">전체 '+db.length+'건　·　매수 보유 '+buys+
     '　·　매도 완료 '+sells+'</div>';
 
-  const rows=byV[VIEW].slice()
+  const all=byV[VIEW].slice()
    .sort((a,b)=> a.date===b.date ? b.pct-a.pct : (a.date<b.date?1:-1));
 
-  if(!rows.length){ $("list").innerHTML='<div class="empty">'+
+  if(!all.length){ $("list").innerHTML='<div class="empty">'+
     (db.length?"이 판정에 해당하는 기록이 없습니다.":"아직 기록이 없습니다.<br>추가 탭에서 첫 종목을 넣어보세요.")+'</div>'; return; }
 
+  const months={};
+  all.forEach(r=>{ (months[r.date.slice(0,7)]=months[r.date.slice(0,7)]||[]).push(r); });
+  const monKeys=Object.keys(months).sort().reverse();
+  if(MON===null||!months[MON]){ MON=monKeys[0]; DAY=null; }
+
+  /* ── 월 선택 화면 ── */
+  if(PICK){
+    const years={};
+    monKeys.forEach(m=>{ (years[m.slice(0,4)]=years[m.slice(0,4)]||[]).push(m); });
+    $("list").innerHTML='<button class="backbtn" id="back">'+
+      '<span class="bkarrow">‹</span><span class="bktxt">기간 선택</span>'+
+      '<span class="bkhint">돌아가기</span></button>'+
+      Object.keys(years).sort().reverse().map(y=>
+        '<div class="yblock"><div class="yhead">'+y+'년</div><div class="folders">'+
+        years[y].map(m=>
+          '<button class="monbtn'+(m===MON?" on":"")+'" data-m="'+m+'" style="--vc:'+VC[VIEW]+'">'+
+          '<div class="mname">'+parseInt(m.slice(5),10)+'월</div>'+
+          '<div class="mcnt">'+months[m].length+'건</div></button>').join("")+
+        '</div></div>').join("");
+    $("back").onclick=()=>{ history.back(); };
+    document.querySelectorAll(".monbtn").forEach(b=>{
+      b.onclick=()=>{ MON=b.dataset.m; PICK=false; DAY=null; pushNav(); renderList(); };
+    });
+    return;
+  }
+
+  const rows=months[MON];
   const days={};
   rows.forEach(r=>{ (days[r.date]=days[r.date]||[]).push(r); });
   if(DAY!==null&&!days[DAY]) DAY=null;
 
-  /* ── 2단계: 날짜 폴더 격자 ── */
+  const monBar='<button class="monbar" id="monsel" style="--vc:'+VC[VIEW]+'">'+
+    '<span class="mtxt">'+monLabel(MON)+'</span>'+
+    '<span class="mct">'+rows.length+'건</span>'+
+    '<span class="mchev">기간 변경 ▾</span></button>';
+
+  /* ── 날짜 폴더 격자 ── */
   if(DAY===null){
-    $("list").innerHTML='<div class="folders">'+
+    $("list").innerHTML=monBar+'<div class="folders">'+
       Object.keys(days).sort().reverse().map(d=>{
         const it=days[d], p=dayParts(d), lead=it[0];
         return '<button class="folder" data-d="'+d+'" style="--vc:'+VC[VIEW]+'">'+
@@ -830,6 +886,7 @@ function renderList(){
           (it.length>1?'<div class="fmore">외 '+(it.length-1)+'종목</div>':"")+
           '</button>';
       }).join("")+'</div>';
+    $("monsel").onclick=()=>{ PICK=true; pushNav(); renderList(); };
     document.querySelectorAll(".folder").forEach(b=>{
       b.onclick=()=>{ DAY=b.dataset.d; pushNav(); renderList(); };
     });
@@ -996,6 +1053,6 @@ build(); draw();
   try{ await refreshCache(); showSync(""); }
   catch(e){ showSync("서버 연결에 실패했습니다 — "+e.message+". 새로고침해서 다시 시도해 주세요.","err"); }
   renderList();
-  try{ history.replaceState({view:VIEW,day:null},"",location.pathname+location.search); }catch(e){}
+  try{ history.replaceState({view:VIEW,day:null,mon:MON,pick:false},"",location.pathname+location.search); }catch(e){}
 })();
 </script>
