@@ -988,7 +988,7 @@ function renderList(){
         '<div class="row"><div><label>매도가 $</label>'+
         '<input class="ts" type="number" step="0.01" inputmode="decimal" value="'+(t.sell??"")+'"></div>'+
         '<div><label>매도일</label><input class="tsd" type="date" value="'+(t.sellDate||"")+'"></div></div>'+
-        '<div class="pnlbox" id="pnl'+k+'"></div>'+
+        '<div class="pnlbox"></div>'+
         '<label>메모</label><input class="tm" value="'+esc(t.memo||"")+'">'+
         '<div style="height:11px"></div><button class="btn tsave">매매 기록 저장</button>'+
         '<div style="height:7px"></div><button class="btn danger tdel">이 기록 삭제</button>';
