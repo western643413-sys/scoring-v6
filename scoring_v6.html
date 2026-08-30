@@ -1001,19 +1001,33 @@ function renderList(){
           sellDate:it.querySelector(".tsd").value});
         const pb=it.querySelector(".pnlbox"); if(pb) pb.innerHTML=p.html;
       };
+      let cur=t.status||"관망중";
+      let manual=false;
+
+      const autoStat=()=>{
+        if(manual||cur==="제외") return;
+        const hasB=!!(+it.querySelector(".tb").value);
+        const hasS=!!(+it.querySelector(".ts").value);
+        const nx = hasS?"매도":(hasB?"매수":"관망중");
+        if(nx===cur) return;
+        cur=nx;
+        it.querySelectorAll(".tstat .chip").forEach(x=>x.classList.toggle("on",x.dataset.s===cur));
+      };
+
       ["tb","ts","tbd","tsd"].forEach(c=>{
-        it.querySelector("."+c).oninput=upPnl;
+        it.querySelector("."+c).oninput=()=>{ upPnl(); autoStat(); };
       });
       upPnl();
 
-      let cur=t.status||"관망중";
       it.querySelectorAll(".tstat .chip").forEach(b=>b.onclick=()=>{
-        cur=b.dataset.s;
+        cur=b.dataset.s; manual=true;
         it.querySelectorAll(".tstat .chip").forEach(x=>x.classList.toggle("on",x.dataset.s===cur));
       });
       it.querySelector(".tsave").onclick=async(ev)=>{
         const btn=ev.target;
         const row=load().find(x=>x.id===id); if(!row) return;
+        const _b=+it.querySelector(".tb").value||null, _s=+it.querySelector(".ts").value||null;
+        if(cur!=="제외"){ if(_s) cur="매도"; else if(_b) cur="매수"; }
         row.trade={status:cur,buy:+it.querySelector(".tb").value||null,
           sell:+it.querySelector(".ts").value||null,
           buyDate:it.querySelector(".tbd").value||null,
