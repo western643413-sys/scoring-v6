@@ -160,6 +160,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;
 .meta{font-size:12.5px;line-height:1.9;color:var(--muted);margin-bottom:9px}
 .meta b{color:var(--text);font-weight:600}
 .sub{font-size:11.5px;color:var(--dim);margin-bottom:10px;line-height:1.6}
+.base{background:var(--raised);border:1px solid var(--line);border-radius:8px;
+  padding:8px 12px;font-size:12.5px;color:var(--muted);margin-bottom:9px;
+  font-family:var(--mono);line-height:1.75}
+.base b{color:var(--text);font-weight:600;font-family:var(--sans)}
+.base em{font-style:normal;font-weight:700}
+.base em.dn{color:#E06C6C}
+.base em.up{color:#5FBF8F}
 .watch{
   background:rgba(201,162,39,.09);border-left:3px solid var(--gold);
   border-radius:0 8px 8px 0;padding:9px 12px;font-size:12.5px;margin-bottom:11px}
@@ -308,6 +315,11 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
       <div><label>현재가 $</label><input id="f_price" type="number" step="0.01" inputmode="decimal"></div>
       <div><label>고점 $</label><input id="f_high" type="number" step="0.01" inputmode="decimal"></div>
       <div><label>고점일</label><input id="f_highd" type="date"></div>
+    </div>
+    <div class="row">
+      <div><label>기준가 $ <span style="color:var(--dim);font-weight:400">— 재스코어링만</span></label><input id="f_base" type="number" step="0.01" inputmode="decimal"></div>
+      <div><label>기준일</label><input id="f_based" type="date"></div>
+      <div><label>기준 점수 %</label><input id="f_basep" type="number" step="0.1" inputmode="decimal"></div>
     </div>
 
     <label>① 엔벨로프 이탈 밴드 <span style="color:var(--dim);font-weight:400">— 이탈이면 5점 고정</span></label>
@@ -576,6 +588,19 @@ function cardHTML(r,trade){
     const g=(d.price/d.high_price-1)*100;
     gp="고점비 "+(g>0?"+":"")+g.toFixed(1)+"%"+(d.high_date?" · 고점 "+d.high_date:"");
   }
+  let bs="";
+  const fm=v=>Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(d.base_price&&d.price){
+    const bp=(d.price/d.base_price-1)*100;
+    const bd=d.base_date?" ("+String(d.base_date).slice(5).replace("-","/")+")":"";
+    bs='<b>기준가</b> $'+fm(d.base_price)+bd+' → $'+fm(d.price)+
+       ' <em class="'+(bp<0?"dn":"up")+'">'+(bp>0?"+":"")+bp.toFixed(1)+'%</em>';
+  }
+  if(d.base_pct!=null){
+    const dp=r.pct-d.base_pct;
+    bs+=(bs?"　·　":"")+'<b>점수</b> '+Number(d.base_pct).toFixed(1)+"% → "+r.pct.toFixed(1)+"%"+
+        ' <em class="'+(dp<0?"dn":"up")+'">'+(dp>0?"+":"")+dp.toFixed(1)+'%p</em>';
+  }
   const col=VC[r.final];
   let chip="";
   if(trade&&trade.status&&trade.status!=="관망중")
@@ -601,6 +626,7 @@ function cardHTML(r,trade){
       '<span style="margin-left:auto;white-space:nowrap">'+chip+
       '<span class="badge" style="background:'+col+'">'+r.final+'</span></span></div>'+
     '<div class="ledger">'+led+'<span class="sum">합계 '+r.raw+'/'+MAXR+'　→　<em>'+r.pct.toFixed(1)+'%</em></span></div>'+
+    (bs?'<div class="base">'+bs+'</div>':"")+
     '<div class="meta">'+rows.join("<br>")+'</div>'+
     (d.indicators?'<div class="sub">보조지표(점수 미반영) · '+esc(d.indicators)+'</div>':"")+
     '<div class="watch"><b>【관망 권장기간】</b> '+esc(r.watch)+'</div>'+
@@ -707,6 +733,8 @@ function collect(){
   return {ticker:$("f_ticker").value.trim().toUpperCase(),name:$("f_name").value.trim(),
     price:+$("f_price").value||null,high_price:+$("f_high").value||null,
     high_date:$("f_highd").value||null,band:$("f_band").value.trim(),
+    base_price:+$("f_base").value||null,base_date:$("f_based").value||null,
+    base_pct:$("f_basep").value===""?null:+$("f_basep").value,
     theme:S.theme,flow:S.flow,cause:S.cause,cause_adjust:S.adj,
     dilution:S.dilUnk?null:S.dil,dilution_purpose:S.purpose,
     cap_type:S.cap,cap_note:$("f_capnote").value.trim(),
@@ -740,6 +768,8 @@ $("fill").onclick=()=>{
     const set=(id,v)=>{ if(v!=null&&v!=="") $(id).value=v; };
     set("f_ticker",o.ticker); set("f_name",o.name); set("f_price",o.price);
     set("f_high",o.high_price); set("f_highd",o.high_date); set("f_band",o.band);
+    const setc=(id,v)=>{ $(id).value=(v==null||v==="")?"":v; };
+    setc("f_base",o.base_price); setc("f_based",o.base_date); setc("f_basep",o.base_pct);
     set("f_capnote",o.cap_note); set("f_emp",o.employees); set("f_ind",o.indicators);
     set("f_cmt",o.comment); set("f_fal",o.falsifier); set("f_nev",o.next_event);
     if(o.sources) $("f_src").value=o.sources.join(", ");
