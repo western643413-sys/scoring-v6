@@ -464,11 +464,14 @@ const W={"1":3,"2":3,"3":3,"4":2,"5a":1,"5b":3,"6":3,"7":1,"8":2,"9":1};
 const MAXR=110, MINR=22, CUT_BUY=80, CUT_WATCH=62, PROMOTE=75;
 const LADDER=["매수추천","관망·소량분할","진입보류","패스"];
 const VC={"매수추천":"var(--buy)","관망·소량분할":"var(--watch)","진입보류":"var(--watch)","패스":"var(--pass)"};
+const LABEL={"매수추천":"1순위 매수","관망·소량분할":"2순위 분할관망",
+  "진입보류":"3순위 대기","패스":"4순위 후순위"};
+const LB_SHORT={"매수추천":"1순위","관망·소량분할":"2순위","진입보류":"3순위","패스":"4순위"};
 const VDESC={
   "매수추천":"80% 이상 · 진입 가능 구간",
   "관망·소량분할":"62~80% · 저점 확인 후 분할 접근",
   "진입보류":"점수는 관망권이나 2주 내 실적 또는 악재 🔴미반영으로 한 단계 보수화. 이벤트가 지나면 관망으로 복귀 가능",
-  "패스":"62% 미만 · 종목 자체가 기준 미달"
+  "패스":"62% 미만 · 우선순위 최하위. 계속 관찰하되 진입 근거는 없음"
 };
 const CAUSE={"5":5,"4":4,"3상":3,"3하":3,"2":2,"1":1,"희석":3};
 
@@ -562,7 +565,7 @@ function score(d){
   if(bad==="🔴"){ if(idx<3) idx++; notes.push("악재 🔴미반영 → 한 단계 강등"); }
   else if(bad==="🟢"){
     if(earn) notes.push("악재 🟢충분반영 — 실적게이트 우선하여 승격 보류");
-    else if(idx===1&&pct>=PROMOTE){ idx=0; notes.push("악재 🟢충분반영 + "+pct.toFixed(1)+"% ≥ 75% → 매수추천 승격"); }
+    else if(idx===1&&pct>=PROMOTE){ idx=0; notes.push("악재 🟢충분반영 + "+pct.toFixed(1)+"% ≥ 75% → 1순위 매수 승격"); }
   }
 
   let watch;
@@ -624,7 +627,7 @@ function cardHTML(r,trade){
       (d.price?'<span class="px">$'+Number(d.price).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>':"")+
       '<span class="gp">'+esc(gp)+'</span>'+
       '<span style="margin-left:auto;white-space:nowrap">'+chip+
-      '<span class="badge" style="background:'+col+'">'+r.final+'</span></span></div>'+
+      '<span class="badge" style="background:'+col+'">'+(LABEL[r.final]||r.final)+'</span></span></div>'+
     '<div class="ledger">'+led+'<span class="sum">합계 '+r.raw+'/'+MAXR+'　→　<em>'+r.pct.toFixed(1)+'%</em></span></div>'+
     (bs?'<div class="base">'+bs+'</div>':"")+
     '<div class="meta">'+rows.join("<br>")+'</div>'+
@@ -892,7 +895,7 @@ function renderList(){
 
   $("stats").innerHTML=LADDER.map(v=>
     '<button class="vtile'+(v===VIEW?" on":"")+'" data-v="'+v+'" style="--vc:'+VC[v]+'">'+
-    '<span class="n">'+byV[v].length+'</span><span class="l">'+v+'</span></button>').join("")+
+    '<span class="n">'+byV[v].length+'</span><span class="l">'+(LABEL[v]||v)+'</span></button>').join("")+
     '<button class="vtile'+(VIEW==="__hold"?" on":"")+'" data-v="__hold" style="--vc:'+TC["매수"]+'">'+
     '<span class="n">'+holds.length+'</span><span class="l">매수 보유</span></button>'+
     '<button class="vtile'+(VIEW==="__done"?" on":"")+'" data-v="__done" style="--vc:'+TC["매도"]+'">'+
@@ -994,6 +997,7 @@ function renderList(){
       return '<div class="item" data-id="'+r.id+'">'+
         '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
         '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
+          '<span class="tag" style="background:'+VC[r.final]+';color:#0A1020">'+(LB_SHORT[r.final]||"")+'</span>'+
           '<span class="tag" style="background:'+TC[ts]+';color:#fff">'+ts+'</span></div>'+
           '<div class="l2">'+line2+'</div></div>'+
         '<span class="p">'+r.pct.toFixed(1)+'%</span></div>'+
