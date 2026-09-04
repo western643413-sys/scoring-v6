@@ -326,6 +326,10 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:16px 0}
     <div class="chips" id="bandchips"></div>
     <input id="f_band" placeholder="예: 10일선−10% 종가이탈">
 
+    <label>섹터 · 하락 유형 <span style="color:var(--dim);font-weight:400">— 표시 전용, 점수 미반영</span></label>
+    <input id="f_sector" placeholder="예: 광네트워킹">
+    <select id="f_dtype"><option value="">— 미지정</option><option value="단독">단독</option><option value="동반">동반</option></select>
+
     <details open>
       <summary>② 테마 + 수급</summary>
       <div class="body">
@@ -614,7 +618,7 @@ function cardHTML(r,trade){
   const q=+(d.quant??3);
   const mc=(d.macro||[]).map(m=>MACRO[m]).join(", ")||"해당 없음";
   const rows=[
-    "<b>밴드</b> "+esc(d.band||"—")+"　·　<b>악재</b> "+esc(d.bad_news||"🟡"),
+    "<b>밴드</b> "+esc(d.band||"—")+(d.sector?"　·　<b>섹터</b> "+esc(d.sector):"")+(d.decline_type?"　·　<b>하락</b> "+esc(d.decline_type):"")+"　·　<b>악재</b> "+esc(d.bad_news||"🟡"),
     "<b>게이트</b> "+(r.notes.length?esc(r.notes.join(" | ")):"미발동"),
     "<b>⑥ 시각판독</b> "+esc(r.capType)+" ("+(r.capAdj>0?"+1":r.capAdj<0?"−1":"조정없음")+")"+
       (d.cap_note?"　·　"+esc(d.cap_note):""),
@@ -736,6 +740,7 @@ function collect(){
   return {ticker:$("f_ticker").value.trim().toUpperCase(),name:$("f_name").value.trim(),
     price:+$("f_price").value||null,high_price:+$("f_high").value||null,
     high_date:$("f_highd").value||null,band:$("f_band").value.trim(),
+    sector:$("f_sector").value.trim(),decline_type:$("f_dtype").value,
     base_price:+$("f_base").value||null,base_date:$("f_based").value||null,
     base_pct:$("f_basep").value===""?null:+$("f_basep").value,
     theme:S.theme,flow:S.flow,cause:S.cause,cause_adjust:S.adj,
@@ -771,6 +776,7 @@ $("fill").onclick=()=>{
     const set=(id,v)=>{ if(v!=null&&v!=="") $(id).value=v; };
     set("f_ticker",o.ticker); set("f_name",o.name); set("f_price",o.price);
     set("f_high",o.high_price); set("f_highd",o.high_date); set("f_band",o.band);
+    set("f_sector",o.sector); $("f_dtype").value=o.decline_type||"";
     const setc=(id,v)=>{ $(id).value=(v==null||v==="")?"":v; };
     setc("f_base",o.base_price); setc("f_based",o.base_date); setc("f_basep",o.base_pct);
     set("f_capnote",o.cap_note); set("f_emp",o.employees); set("f_ind",o.indicators);
@@ -990,10 +996,12 @@ function renderList(){
       const star=(top[r.date]!==undefined&&r.pct===top[r.date])
         ? '<span class="best" title="그날 최고점">★</span>' : "";
       const band=shortBand(r.data&&r.data.band);
+      const sec=(r.data&&r.data.sector)||"", dty=(r.data&&r.data.decline_type)||"";
+      const tail=(sec?'　·　'+esc(sec):"")+(dty?'　·　<span style="color:'+(dty==="단독"?"#C9A227":"#5D6E8C")+'">'+esc(dty)+'</span>':"");
       const p=pnlInfo(r.trade);
       const line2 = p.text
         ? '<span class="'+(p.done?(p.win?"gain":"loss"):"hold")+'">'+esc(p.text)+'</span>'
-        : '스코어링 금액 '+px+(band?'　·　'+esc(band):"");
+        : '스코어링 금액 '+px+(band?'　·　'+esc(band):"")+tail;
       return '<div class="item" data-id="'+r.id+'">'+
         '<div class="head"><span class="dot" style="background:'+VC[r.final]+'"></span>'+
         '<div class="idn"><div class="l1"><span class="t">'+esc(r.ticker)+'</span>'+star+
